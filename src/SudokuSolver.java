@@ -23,11 +23,11 @@ public class SudokuSolver {
 	}
 
 
-	/* Création des variables propositionnelles.
-	 * Nous avons choisi de crée une liste comprennant des sous-listes.
-	 * propositionalVarTab contient les 9 grilles des variables propositionnelles associées à chaques valeures (de 1 à 9).
-	 * Une variable propositionnelle est crée ainsi : X, ligne, colonne, valeur
-	 * La case de coordonnée 1,3 avec la valeur 4 correspond donc à X,1,3,4
+	/* Creation des variables propositionnelles.
+	 * Nous avons choisi de crï¿½e une liste comprennant des sous-listes.
+	 * propositionalVarTab contient les 9 grilles des variables propositionnelles associï¿½es ï¿½ chaques valeures (de 1 ï¿½ 9).
+	 * Une variable propositionnelle est crï¿½e ainsi : X, ligne, colonne, valeur
+	 * La case de coordonnï¿½e 1,3 avec la valeur 4 correspond donc ï¿½ X,1,3,4
 	 */
 	public void create_var() {
 		for (int val = 1; val<10; val++) {
@@ -41,7 +41,7 @@ public class SudokuSolver {
 		}
 	}
 
-	/* Chaque chiffre doit apparaître exactement une fois dans chaque ligne de la grille
+	/* Chaque chiffre doit apparaï¿½tre exactement une fois dans chaque ligne de la grille
 	 * R1 : Chaque chiffre doit apparaitre au moins une fois dans chaque ligne.
 	 * R2 : Chaque chiffre doit apparaitre au plus une fois dans chaque ligne.
 	 * R3 : R1 & R2
@@ -105,7 +105,7 @@ public class SudokuSolver {
 	}
 
 
-	/* Chaque case doit avoir exactement un seul chiffre de 1 à 9
+	/* Chaque case doit avoir exactement un seul chiffre de 1 ï¿½ 9
 	 * K1 : Chaque case doit avoir au moins un chiffre.
 	 * K2 : Chaque case doit avoir au plus un chiffre.
 	 * K3 : K1 & K2
@@ -162,9 +162,9 @@ public class SudokuSolver {
 		BooleanFormula cnf = BooleanFormula.toCnf(andK3);
 		return cnf.getClauses();
 	}
-	
-	
-	/* Chaque chiffre doit apparaître exactement une fois dans chaque colonne de la grille
+
+
+	/* Chaque chiffre doit apparaï¿½tre exactement une fois dans chaque colonne de la grille
 	 * C1 : Chaque chiffre doit apparaitre au moins une fois dans chaque colonne.
 	 * C2 : Chaque chiffre doit apparaitre au plus une fois dans chaque colonne.
 	 * C3 : C1 & C2
@@ -220,28 +220,81 @@ public class SudokuSolver {
 		BooleanFormula cnf = BooleanFormula.toCnf(andC3);
 		return cnf.getClauses();
 	}
-	
-	
-	
-	
-	
+
+	/**
+	 * On initialise une pile vide de clause puis on parcourt le tableau. 
+	 * Si lâ€™on trouve une valeur k != 0 dans la case(i, j), on ajoute Ã  la pile les clauses xi,j,k et  Â¬xi,j,q pour tout q!=k
+	 * (attention: une clause unitaire est une liste de longueur 1)
+	 * @param grilleDepart
+	 * @return
+	 */
+	public int[][] grilleDepartToClause(String[][] grilleDepart) {
+		int [][] clauses = null;
+		And andBegin = new And();
+		for(int row =0; row<9; row++) {
+			And andRow = new And();
+			for(int col=0; col<9; col++) {
+				And andCol = new And();
+				for(int val=1; val<10; val++) {
+					And andVal = new And();
+					if(grilleDepart[row][col].equals(String.valueOf(val))) {
+						for(int val2=1; val2<10; val2++) {
+							And and=null;
+							if(val!=val2) {
+								Not not = new Not(this.propositionalVarTab.get(val2-1).get(row*9+col));
+								and = new And(this.propositionalVarTab.get(val-1).get(row*9+col), not);
+							}
+							if(and!=null)
+							andVal= new And (andVal, and);
+						}
+					}
+					andCol = new And(andCol, andVal);
+				}
+				andRow = new And(andRow, andCol);
+			}
+			andBegin = new And (andBegin, andRow);
+		}
+		BooleanFormula cnf = BooleanFormula.toCnf(andBegin);
+		return cnf.getClauses();
+	}
+
+
 
 
 	public static void main(String[] args)
 	{
-		String test = "#26###81#";
+		String grilleSudoku = 
+				  "#26###81#"
+				+ "3##7#8##6"
+				+ "4###5###7"
+				+ "#5#1#7#9#"
+				+ "##39#51##"
+				+ "#4#3#2#5#"
+				+ "1###3###2"
+				+ "5##2#4##9"
+				+ "#38###46#";
+		String[][] grilleDepart = {
+				{"#","2","6","#","#","#","8","1","#"},
+				{"3","#","#","7","#","8","#","#","6"},
+				{"4","#","#","#","5","#","#","#","7"},
+				{"#","5","#","1","#","7","#","9","#"},
+				{"#","#","3","9","#","5","1","#","#"},
+				{"#","4","#","3","#","2","#","5","#"},
+				{"1","#","#","#","3","#","#","#","2"},
+				{"5","#","#","2","#","4","#","#","9"},
+				{"#","3","8","#","#","#","4","6","#"},			
+		};
 
-
-		SudokuSolver su = new SudokuSolver(test);
+		SudokuSolver su = new SudokuSolver(grilleSudoku);
 		su.create_var();
 		int[][] unseulChiffre_ligne = su.unSeulChiffre_ligne();		
 		int[][] unseulChiffre_case = su.unSeulChiffre_case();		
 		int[][] unseulChiffre_colonne = su.unSeulChiffre_colonne();		
+		int[][] conditionInitiales = su.grilleDepartToClause(grilleDepart);
 
 
-
-		for(int c = 0; c < unseulChiffre_colonne.length; c++) {
-			System.out.println(Arrays.toString(unseulChiffre_colonne[c]));
+		for(int c = 0; c < conditionInitiales.length; c++) {
+			System.out.println(Arrays.toString(conditionInitiales[c]));
 		}
 		/*
 		 * System.out.println();
