@@ -1,3 +1,4 @@
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Map;
@@ -6,21 +7,19 @@ import stev.booleans.*;
 
 import org.sat4j.core.VecInt;
 import org.sat4j.minisat.SolverFactory;
+import org.sat4j.reader.DimacsReader;
+import org.sat4j.reader.Reader;
 import org.sat4j.specs.ContradictionException;
+import org.sat4j.specs.IProblem;
 import org.sat4j.specs.ISolver;
 import org.sat4j.specs.IVecInt;
 import org.sat4j.specs.TimeoutException;
 
 
 public class SudokuSolver {
-
-	public String sudoku = "";
-	ArrayList<ArrayList<PropositionalVariable> > propositionalVarTab = new ArrayList<ArrayList<PropositionalVariable> >();
-
-
-	public SudokuSolver(String sudoku) {
-		this.sudoku = sudoku;
-	}
+	ArrayList<PropositionalVariable> propositionalVarAll = new ArrayList<PropositionalVariable>();
+	ArrayList<ArrayList<PropositionalVariable> > propositionalVarTab = new ArrayList<ArrayList<PropositionalVariable> >(); //Pour les 3 premières règles
+	ArrayList<ArrayList<ArrayList<PropositionalVariable>> > propositionalVarBloc = new ArrayList<ArrayList<ArrayList<PropositionalVariable>>>(); //Pour la règle sur les blocs
 
 
 	/* Creation des variables propositionnelles.
@@ -34,11 +33,36 @@ public class SudokuSolver {
 			ArrayList<PropositionalVariable> propositionalVarTmp = new ArrayList<>();
 			for (int row = 0; row<9; row++) {
 				for (int col = 0; col<9;col++) {
-					propositionalVarTmp.add(new PropositionalVariable("X"+row+","+col+","+val));
+					propositionalVarTmp.add(new PropositionalVariable("X,"+row+","+col+","+val));
 				}
 			}
 			propositionalVarTab.add(propositionalVarTmp);
 		}
+		for (int row = 0; row<9; row++) {
+			for (int col = 0; col<9; col++) {
+				for (int val = 1; val<10;val++) {
+					propositionalVarAll.add(new PropositionalVariable("X,"+row+","+col+","+val));
+				}
+			}
+		}
+
+		for(int val =1; val<10; val++) {
+			ArrayList<ArrayList<PropositionalVariable>> propositionalVarTmp = new ArrayList<>();
+			for (int row = 0; row<9; row+=3) {
+				for (int col = 0; col<9;col+=3) {
+					ArrayList<PropositionalVariable> propositionalVarTmpBis = new ArrayList<>();
+					int _i = row-(row%3), _j = col-(col%3);
+					for(int x=_i;x<_i+3; x++) {
+						for(int y=_j;y<_j+3; y++) {
+							propositionalVarTmpBis.add(new PropositionalVariable("X,"+x+","+y+","+val));
+						}
+					}
+					propositionalVarTmp.add(propositionalVarTmpBis);
+				}
+				propositionalVarBloc.add(propositionalVarTmp);
+			}
+		}
+		System.out.println(propositionalVarBloc.toString());
 	}
 
 	/* Chaque chiffre doit appara�tre exactement une fois dans chaque ligne de la grille
@@ -46,7 +70,7 @@ public class SudokuSolver {
 	 * R2 : Chaque chiffre doit apparaitre au plus une fois dans chaque ligne.
 	 * R3 : R1 & R2
 	 */
-	public int[][] unSeulChiffre_ligne() {
+	public BooleanFormula unSeulChiffre_ligne() {
 		// R1 :
 		And andR1 = new And();
 		for (int row = 0; row < 9; row++ ) {
@@ -101,7 +125,7 @@ public class SudokuSolver {
 
 
 		BooleanFormula cnf = BooleanFormula.toCnf(andR3);
-		return cnf.getClauses();
+		return cnf;
 	}
 
 
@@ -110,7 +134,7 @@ public class SudokuSolver {
 	 * K2 : Chaque case doit avoir au plus un chiffre.
 	 * K3 : K1 & K2
 	 */
-	public int[][] unSeulChiffre_case() {
+	public BooleanFormula unSeulChiffre_case() {
 		// K1 :
 		And andK1 = new And();
 		for (int row = 0; row < 9; row++ ) {
@@ -160,7 +184,7 @@ public class SudokuSolver {
 
 
 		BooleanFormula cnf = BooleanFormula.toCnf(andK3);
-		return cnf.getClauses();
+		return cnf;
 	}
 
 
@@ -169,7 +193,7 @@ public class SudokuSolver {
 	 * C2 : Chaque chiffre doit apparaitre au plus une fois dans chaque colonne.
 	 * C3 : C1 & C2
 	 */
-	public int[][] unSeulChiffre_colonne() {
+	public BooleanFormula unSeulChiffre_colonne() {
 		// C1 :
 		And andC1 = new And();
 		for (int col = 0; col < 9; col++ ) {
@@ -218,17 +242,74 @@ public class SudokuSolver {
 
 
 		BooleanFormula cnf = BooleanFormula.toCnf(andC3);
-		return cnf.getClauses();
+		return cnf;
 	}
+
+
+	/*
+	 * Chaque chiffre doit appara�tre exactement une fois dans chaque bloc de la grille
+	 * D1 : Chaque chiffre doit apparaitre au moins une fois dans chaque bloc.
+	 * D2 : Chaque chiffre doit apparaitre au plus une fois dans chaque bloc.
+	 * D3 : D1 & D2
+	 */
+
+	public BooleanFormula unSeulChiffre_bloc() {
+		//D1
+		And andD1 = new And();
+		for (int bloc =0; bloc<9; bloc++) {
+			And andBloc = new And();
+			for(int val =1; val<10; val++) {
+				Or or = new Or();
+				for(int indice =0; indice<9; indice++) {
+					or = new Or(or,this.propositionalVarBloc.get(val-1).get(bloc).get(indice));
+				}
+				andBloc = new And(andBloc, or);
+			}
+			andD1 = new And(andD1, andBloc);
+		}
+
+		//D2
+		And andD2 = new And();
+		for (int bloc = 0; bloc<9;bloc++) {
+			And andBloc = new And();
+			for (int val = 1; val<10;val++) {
+				And andVal = new And();
+				for (int indice1 = 0; indice1<8;indice1++) {
+					And andIndice1 = new And();
+					for (int indice2 = indice1+1; indice2<9;indice2++) {
+						Or or = null;
+						Not not1 = new Not(this.propositionalVarBloc.get(val-1).get(bloc).get(indice1));
+						Not not2 = new Not(this.propositionalVarBloc.get(val-1).get(bloc).get(indice2));
+						or = new Or(not1, not2);
+
+						andIndice1 = new And(andIndice1, or);
+
+					}
+					andVal = new And(andVal,andIndice1);
+
+				}
+				andBloc = new And(andBloc,andVal);
+
+			}
+			andD2 = new And(andD2,andBloc);
+		}
+
+		//D3
+		And andD3 = new And(andD1, andD2);
+
+
+		BooleanFormula cnf = BooleanFormula.toCnf(andD3);
+		return cnf;
+	}
+
+
+
 
 	/**
 	 * On initialise une pile vide de clause puis on parcourt le tableau. 
 	 * Si l’on trouve une valeur k != 0 dans la case(i, j), on ajoute à la pile les clauses xi,j,k et  ¬xi,j,q pour tout q!=k
-	 * (attention: une clause unitaire est une liste de longueur 1)
-	 * @param grilleDepart
-	 * @return
 	 */
-	public int[][] grilleDepartToClause(String[][] grilleDepart) {
+	public BooleanFormula grilleDepartToClause(String[][] grilleDepart) {
 		int [][] clauses = null;
 		And andBegin = new And();
 		for(int row =0; row<9; row++) {
@@ -245,7 +326,7 @@ public class SudokuSolver {
 								and = new And(this.propositionalVarTab.get(val-1).get(row*9+col), not);
 							}
 							if(and!=null)
-							andVal= new And (andVal, and);
+								andVal= new And (andVal, and);
 						}
 					}
 					andCol = new And(andCol, andVal);
@@ -255,24 +336,16 @@ public class SudokuSolver {
 			andBegin = new And (andBegin, andRow);
 		}
 		BooleanFormula cnf = BooleanFormula.toCnf(andBegin);
-		return cnf.getClauses();
+		return cnf;
 	}
 
 
 
 
-	public static void main(String[] args)
+	public static void main(String[] args) throws TimeoutException
 	{
-		String grilleSudoku = 
-				  "#26###81#"
-				+ "3##7#8##6"
-				+ "4###5###7"
-				+ "#5#1#7#9#"
-				+ "##39#51##"
-				+ "#4#3#2#5#"
-				+ "1###3###2"
-				+ "5##2#4##9"
-				+ "#38###46#";
+		String sudoku = "#26###81#3##7#8##64###5###7#5#1#7#9###39#51###4#3#2#5#1###3###25##2#4##9#38###46#";
+		//Recuperation de la grille initiale de sudoku
 		String[][] grilleDepart = {
 				{"#","2","6","#","#","#","8","1","#"},
 				{"3","#","#","7","#","8","#","#","6"},
@@ -285,34 +358,63 @@ public class SudokuSolver {
 				{"#","3","8","#","#","#","4","6","#"},			
 		};
 
-		SudokuSolver su = new SudokuSolver(grilleSudoku);
+		SudokuSolver su = new SudokuSolver();
+		//Creation des variables propositionnelles
 		su.create_var();
-		int[][] unseulChiffre_ligne = su.unSeulChiffre_ligne();		
-		int[][] unseulChiffre_case = su.unSeulChiffre_case();		
-		int[][] unseulChiffre_colonne = su.unSeulChiffre_colonne();		
-		int[][] conditionInitiales = su.grilleDepartToClause(grilleDepart);
 
+		//Creation des CNF associées aux règles du sudoku
+		BooleanFormula unseulChiffre_case = su.unSeulChiffre_case();		
+		BooleanFormula unseulChiffre_ligne = su.unSeulChiffre_ligne();		
+		BooleanFormula unseulChiffre_colonne = su.unSeulChiffre_colonne();		
+		BooleanFormula unseulChiffre_bloc = su.unSeulChiffre_bloc();
 
-		for(int c = 0; c < conditionInitiales.length; c++) {
-			System.out.println(Arrays.toString(conditionInitiales[c]));
+		//Creation des CNF associées au sudoku initial
+		BooleanFormula conditionInitiales = su.grilleDepartToClause(grilleDepart);
+		And and = new And(unseulChiffre_case, unseulChiffre_ligne, unseulChiffre_colonne, unseulChiffre_bloc, conditionInitiales);
+		BooleanFormula finalCnf = BooleanFormula.toCnf(and);
+		//Recuperation des clauses
+		int[][] clauses = finalCnf.getClauses();
+		Map<String,Integer> associations = finalCnf.getVariablesMap();
+		for(int i=0; i<9; i++) {
+			for(int j=0; j<9; j++) {
+				for(int val =1; val<10; val++) {
+					System.out.println("la variable X,"+i+","+j+","+val+" est associé a l'entier "  + associations.get("X,"+i+","+j+","+val));
+				}
+			}
 		}
-		/*
-		 * System.out.println();
+
+		//Creation du solver
 		ISolver solver = SolverFactory.newDefault();
 
 
+		//Ajout des clauses au solver
 		for(int c = 0; c < clauses.length; c++) {
-			System.out.println(Arrays.toString(clauses[c]));
 			try {
 				solver.addClause(new VecInt(clauses[c]));
 			} catch (ContradictionException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
-
 		}
+		//Reponse : problème solvable ou non
+		IProblem problem = solver;
+		if (problem.isSatisfiable()) { 
+			for(int i=1; i<730; i++) {
+				if(problem.model(i)) { //recuperer les variables qui sont dans la grille de sudoku valide
+					String variable = su.propositionalVarAll.get(i-1).toString();
+					String[] infoVariable = variable.split(",");
+					grilleDepart[Integer.parseInt(infoVariable[1])][Integer.parseInt(infoVariable[2])] = infoVariable[3];
+				}
+			}
 
-		return true;
-		 */
+			System.out.println("on a une solution au problème");
+			for(int i=0; i<9; i++) {
+				System.out.println();
+				for(int j =0; j<9; j++) {
+					System.out.print(grilleDepart[i][j]);
+				}
+			}
+		} else {
+			System.out.println("pas de réponse");
+		}
 	}
 }
